@@ -16,8 +16,8 @@ class TaskResponse(BaseModel):
     title: str
     done: bool # 1 is True, 0 is False
 
-    class Config:
-        from_attributes = True
+    class Config: #inner class of Pydantic to configure parent class TaskResponse
+        from_attributes = True #it allows to work with task.id, not task["id"]
 
 # Function for lifespan
 @asynccontextmanager
@@ -60,8 +60,8 @@ def get_db():
     finally:
         conn.close()
 
-# class TaskCreate(BaseModel):
-#     title: str
+class TaskCreate(BaseModel):
+     title: str
 
 # # Validation for update (PUT)
 # class UpdateTaskModel(BaseModel):
@@ -101,29 +101,38 @@ def get_task_by_id(task_id: int, db: sqlite3.Connection = Depends(get_db)):
         
     return dict(row)
 
-# #Enpoint for adding new task
-# @app.post("/tasks", status_code=201)
-# def create_task(task_data: TaskCreate):
-#     # Delete spaces from string's ends
-#     clean_title = task_data.title.strip()
+#Endpoint for adding new task
+# Curl string to test this endpoint:
+# curl -X POST http://127.0.0.1:8000/tasks \
+#      -H "Content-Type: application/json" \
+#      -d '{"title": "My New Task"}'
+#  (-X POST - request type, -H - sets content type to JSON, -d passes JSON peyload with specidied title)
+@app.post("/tasks", status_code=201)
+def create_task(task_data: TaskCreate, response_model=TaskResponse, db: sqlite3.Connection = Depends(get_db)):
+#    Delete spaces from string's ends
+    clean_title = task_data.title.strip()
     
-#     # If the title is not empty
-#     if not clean_title:
-#         raise HTTPException(
-#             status_code=400, 
-#             detail="Title cannot be empty or contain only spaces"
-#         )
-    
-#     new_id = max([t["id"] for t in tasks_db], default=0) + 1
-    
-#     new_task = {
-#         "id": new_id,
-#         "title": clean_title,  
-#         "done": False              
-#     }
-    
-#     tasks_db.append(new_task)
-#     return new_task
+    # If the title is not empty
+    if not clean_title:
+        raise HTTPException(
+            status_code=400, 
+            detail="Title cannot be empty or contain only spaces"
+        )
+
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        (clean_title, 0)
+    )
+    db.commit()
+
+    new_id = cursor.lastrowid
+
+    cursor.execute(
+        "SELECT id, title, done FROM tasks WHERE id = ?", (new_id,)
+    )
+    row = cursor.fetchone()
+    return dict(row)
 
 
 # ### Endpoint PUT /tasks/{id}
