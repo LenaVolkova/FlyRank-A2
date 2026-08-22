@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     """)
     cursor.execute("SELECT COUNT(*) FROM tasks")
     count = cursor.fetchone()[0]
-    print(f"Текущее количество задач в БД при старте: {count}")
+    print(f"Current quantity of tasks ib database: {count}")
     if count == 0:
         initial_tasks = [("Learn FastAPI", 0), ("Install FastAPI", 1), ("Create the first app", 0)]
         cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", initial_tasks)
@@ -89,15 +89,17 @@ def get_tasks(db: sqlite3.Connection = Depends(get_db)):
     
     return [dict(row) for row in rows]
 
-# #Endpoint to get a task by id
-# @app.get("/tasks/{task_id}")
-# def get_task_by_id(task_id: int):
-#     for task in tasks_db:
-#         if task["id"] == task_id:
-#             return task
-            
-#     # If there is no task with such a number, then return 404 error code
-#     raise HTTPException(status_code=404, detail="Task not found")
+#Endpoint to get a task by id
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
+def get_task_by_id(task_id: int, db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("SELECT id, title, done FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    return dict(row)
 
 # #Enpoint for adding new task
 # @app.post("/tasks", status_code=201)
