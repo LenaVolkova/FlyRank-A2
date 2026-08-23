@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 import uvicorn
@@ -18,6 +20,14 @@ class TaskResponse(BaseModel):
 
     class Config: #inner class of Pydantic to configure parent class TaskResponse
         from_attributes = True #it allows to work with task.id, not task["id"]
+
+# Exception handler to return 400 instead of 422 for validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Invalid body"}
+    )
 
 # Function for lifespan
 @asynccontextmanager
@@ -63,12 +73,10 @@ def get_db():
 class TaskCreate(BaseModel):
      title: str
 
-# # Validation for update (PUT)
-# class UpdateTaskModel(BaseModel):
-#     # Field(..., min_length=1) is to ensure that the string is not empty.
-#     # "Optional" allows to update "title" or "done", or both.
-#     title: str | None = Field(None, min_length=1, description="Task's title cannot be empty")
-#     done: bool | None = Field(None, description="Status of the task")
+# Validation for update (PUT)
+class UpdateTaskModel(BaseModel):
+    title: Optional[str] = None
+    done: Optional[bool] = None
 
 # Configure root path - retutn API description
 @app.get("/")
@@ -107,8 +115,8 @@ def get_task_by_id(task_id: int, db: sqlite3.Connection = Depends(get_db)):
 #      -H "Content-Type: application/json" \
 #      -d '{"title": "My New Task"}'
 #  (-X POST - request type, -H - sets content type to JSON, -d passes JSON peyload with specidied title)
-@app.post("/tasks", status_code=201)
-def create_task(task_data: TaskCreate, response_model=TaskResponse, db: sqlite3.Connection = Depends(get_db)):
+@app.post("/tasks", status_code=201, response_model=TaskResponse)
+def create_task(task_data: TaskCreate, db: sqlite3.Connection = Depends(get_db)):
 #    Delete spaces from string's ends
     clean_title = task_data.title.strip()
     
@@ -135,42 +143,59 @@ def create_task(task_data: TaskCreate, response_model=TaskResponse, db: sqlite3.
     return dict(row)
 
 
-# ### Endpoint PUT /tasks/{id}
-# @app.put("/tasks/{id}")
-# async def update_task(id: int, task_body: UpdateTaskModel):
-#     task = next((t for t in tasks_db if t["id"] == id), None)
+### Endpoint PUT /tasks/{id}
+@app.put("/tasks/{id}", response_model=TaskResponse)
+def update_task(id: int, task_body: UpdateTaskModel, db: sqlite3.Connection = Depends(get_db)):
+    if task_body.title is None and task_body.done is None:
+        raise HTTPException(status_code=400, detail="Invalid body")
+    if task_body.title is not None:
+        clean_title = task_body.title.strip()
+        if not clean_title:
+            raise HTTPException(status_code=400, detail="Invalid body")
+    else:
+        clean_title = None
+
+    cursor = db.cursor()
+
+    cursor.execute("SELECT id FROM tasks WHERE id = ?", (id,))
+    if cursor.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    update_fields = []
+    params = []
+    if clean_title is not None:
+        update_fields.append("title = ?")
+        params.append(clean_title)
+    if task_body.done is not None:
+        update_fields.append("done = ?")
+        params.append(1 if task_body.done else 0)
+
+    params.append(id)  # Add id for the WHERE clause
     
-#     if task is None:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND, 
-#             detail=f"Task with id {id} not found"
-#         )
-    
-#     update_data = task_body.model_dump(exclude_unset=True)
-#     if not update_data:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST, 
-#             detail="Body cannot be empty. Provide 'title' or 'done'."
-#         )
-    
-#     if "title" in update_data:
-#         task["title"] = update_data["title"]
-#     if "done" in update_data:
-#         task["done"] = update_data["done"]
-        
-#     return task
+    query = f"UPDATE tasks SET {', '.join(update_fields)} WHERE id = ?"
+    cursor.execute(query, params)
+    db.commit()
+
+    cursor.execute("SELECT id, title, done FROM tasks WHERE id = ?", (id,))
+    row = cursor.fetchone()
+    return dict(row)
 
 
-# ### Endpoint DELETE /tasks/{id}
-# @app.delete("/tasks/{task_id}", status_code=204, tags=["Tasks"])
-# async def delete_task(task_id: int):
-#     for index, task in enumerate(tasks_db):
-#         if task["id"] == task_id:
-#             tasks_db.pop(index)  
-#             return None          # FastAPI returns 204
-            
-#     #If nothing is found then return 404
-#     raise HTTPException(status_code=404, detail=f"Task with ID {task_id})
+### Endpoint DELETE /tasks/{id}
+### for testing use the string curl -i -X DELETE http://127.0.0.1:8000/tasks/1
+@app.delete("/tasks/{id}", status_code=204)
+def delete_task(id: int, db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    
+    cursor.execute("SELECT id FROM tasks WHERE id = ?", (id,))
+    if cursor.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (id,))
+    db.commit()
+    
+    return None
+
 
 # #Endpoint for getting overall info on tasks
 # @app.get("/stats")
