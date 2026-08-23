@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     """)
     cursor.execute("SELECT COUNT(*) FROM tasks")
     count = cursor.fetchone()[0]
-    print(f"Current quantity of tasks ib database: {count}")
+    print(f"Current quantity of tasks in database: {count}")
     if count == 0:
         initial_tasks = [("Learn FastAPI", 0), ("Install FastAPI", 1), ("Create the first app", 0)]
         cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", initial_tasks)
