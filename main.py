@@ -198,25 +198,20 @@ def delete_task(id: int, db: sqlite3.Connection = Depends(get_db)):
 
 
 # #Endpoint for getting overall info on tasks
-# @app.get("/stats")
-# def get_stats():
-#     total = len(tasks_db)
-#     done_count = sum(1 for t in tasks_db if t["done"])
-#     open_count = total - done_count
-    
-#     return {
-#         "total": total,
-#         "done": done_count,
-#         "open": open_count
-#     }
+@app.get("/stats")
+def get_stats(db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    total = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE done = '0'")
+    not_done = cursor.fetchone()[0]
+        
+    return {
+        "total": total,
+        "done": total - not_done,
+        "open": not_done
+    }
 
-# #Endpoint to reset list of tasks to initial values
-# @app.post("/reset")
-# def reset_tasks():
-#     global tasks_db
-#     # Deep copy of initial tasks
-#     tasks_db = [t.copy() for t in INITIAL_TASKS]
-#     return {"message": "Tasks database has been reset to initial state"}
 
  # Launch server 
 if __name__ == "__main__":

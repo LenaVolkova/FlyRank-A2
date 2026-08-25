@@ -41,3 +41,4 @@ Its Swagger documentation is accessible via URL: `http://127.0.0.1:8000/docs`
 | **POST** | `/tasks` | Creates a new task (expects JSON body `{"title": "..."}`). |
 | **PUT** | `/tasks/{id}` | Updates an existing task's title and/or done status. |
 | **DELETE** | `/tasks/{id}` | Deletes a task from the database. |
+| **GET** | `/stats` | Shows statistics: how many tasks, how many of them are done and not done | 
